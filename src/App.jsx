@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Sun, Moon, CloudRain, CloudDrizzle, Cloud, Wind, MapPin, RefreshCw, Trash2, Plus, Thermometer, Droplets } from 'lucide-react'
+import { Sun, Moon, CloudRain, CloudDrizzle, Cloud, Wind, MapPin, RefreshCw, Trash2, Plus, Thermometer, Droplets, Info } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -32,7 +32,7 @@ function Card({ children, className = '' }) {
   )
 }
 
-function WeatherHeader({ onRefreshAll, count }) {
+function WeatherHeader({ onRefreshAll, count, demoMode }) {
   const now = new Date()
   const hours = now.getHours()
   const isDay = hours >= 6 && hours < 18
@@ -53,7 +53,7 @@ function WeatherHeader({ onRefreshAll, count }) {
           <RefreshCw size={16} /> Refresh
         </button>
       </div>
-      <div className="mt-4 flex items-center gap-3 text-white/70 text-sm">
+      <div className="mt-4 flex items-center gap-3 text-white/70 text-sm flex-wrap">
         <IconBadge>
           <Thermometer size={14} /> Live weather
         </IconBadge>
@@ -63,6 +63,11 @@ function WeatherHeader({ onRefreshAll, count }) {
         <IconBadge>
           {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </IconBadge>
+        {demoMode && (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium bg-amber-500/15 text-amber-200 border border-amber-400/20">
+            <Info size={14}/> Demo data
+          </span>
+        )}
       </div>
     </div>
   )
@@ -217,21 +222,68 @@ function CatCard({ item, onRefresh, onDelete }) {
   )
 }
 
+// Simple local recommendation logic for demo mode
+function demoRecommend(tempC, windKmh, precipMm, isDay) {
+  const windChill = tempC - Math.min(10, windKmh / 5)
+  const adjusted = Math.round(windChill)
+  let coat = 'Light coat'
+  if (adjusted < 5) coat = 'Heavy coat'
+  else if (adjusted < 12) coat = 'Medium coat'
+  let precip = 'Dry'
+  if (precipMm >= 0.1 && precipMm < 1) precip = 'Drizzle'
+  if (precipMm >= 1) precip = 'Rain'
+  const note = isDay ? 'Outside rug recommended for outdoor time.' : 'Inside rug for cozy nights.'
+  return { coat, note, adjusted_temp_c: adjusted, precip }
+}
+
+function buildDemoItems() {
+  const now = new Date()
+  const isDay = now.getHours() >= 6 && now.getHours() < 18
+  const demoCats = [
+    { id: 'demo-1', name: 'Luna', city: 'London', notes: 'Short hair' },
+    { id: 'demo-2', name: 'Milo', city: 'New York', notes: 'Senior cat' },
+    { id: 'demo-3', name: 'Nala', city: 'Sydney', notes: 'Long hair' },
+  ]
+
+  const demoWeathers = [
+    { temperature_c: 8, apparent_c: 6, wind_kmh: 15, precipitation_mm: 0.2, is_day: isDay },
+    { temperature_c: 2, apparent_c: -1, wind_kmh: 22, precipitation_mm: 1.4, is_day: isDay },
+    { temperature_c: 18, apparent_c: 17, wind_kmh: 10, precipitation_mm: 0, is_day: isDay },
+  ]
+
+  return demoCats.map((cat, idx) => {
+    const w = demoWeathers[idx]
+    return {
+      cat,
+      weather: w,
+      recommendations: {
+        day: demoRecommend(w.temperature_c, w.wind_kmh, w.precipitation_mm, true),
+        night: demoRecommend(w.temperature_c - 3, w.wind_kmh, w.precipitation_mm, false),
+      },
+    }
+  })
+}
+
 export default function App() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [demoMode, setDemoMode] = useState(false)
 
   const load = async () => {
     setLoading(true)
     setError('')
+    setDemoMode(false)
     try {
       const res = await fetch(`${API_URL}/api/dashboard`)
       if (!res.ok) throw new Error('Failed to load')
       const data = await res.json()
       setItems(data.items || [])
     } catch (e) {
-      setError('Unable to reach the API. Add a cat to get recommendations.')
+      // Fallback to local demo data when API is unreachable
+      const demo = buildDemoItems()
+      setItems(demo)
+      setDemoMode(true)
     } finally {
       setLoading(false)
     }
@@ -249,13 +301,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,rgba(30,64,175,0.25),rgba(2,6,23,1))]">
       <div className="max-w-md mx-auto px-4 py-6 sm:max-w-2xl sm:py-10">
-        <WeatherHeader onRefreshAll={load} count={items.length} />
+        <WeatherHeader onRefreshAll={load} count={items.length} demoMode={demoMode} />
 
         <div className="mt-6 flex flex-col gap-4">
           {loading ? (
             <Card><p className="text-white/80">Loading…</p></Card>
-          ) : error ? (
-            <Card><p className="text-red-300">{error}</p></Card>
           ) : items.length === 0 ? (
             <Card><p className="text-white/80">No cats yet. Add one to see recommendations.</p></Card>
           ) : (
